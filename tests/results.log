@@ -1,0 +1,35 @@
+=== Hamming (7,4) – SIN error ===
+msg=1010 code=1011010 -> Sin errores. Datos: 1010
+msg=0111 code=0001111 -> Sin errores. Datos: 0111
+msg=0001 code=1101001 -> Sin errores. Datos: 0001
+
+=== Hamming (7,4) – 1 error ===
+msg=1010 ok=1011010 err=1011000 -> Error en bit 6. Código corregido: 1011010. Datos: 1010
+msg=0111 ok=0001111 err=0101111 -> Error en bit 2. Código corregido: 0001111. Datos: 0111
+msg=0001 ok=1101001 err=1100001 -> Error en bit 4. Código corregido: 1101001. Datos: 0001
+
+=== Hamming (7,4) – 2+ errores ===
+msg=1010 ok=1011010 err=0011011 -> Error en bit 6. Código corregido: 0011001. Datos: 1001
+msg=0111 ok=0001111 err=0011011 -> Error en bit 6. Código corregido: 0011001. Datos: 1001
+msg=0001 ok=1101001 err=1001011 -> Error en bit 4. Código corregido: 1000011. Datos: 0011
+
+=== CRC-32 – SIN error ===
+msg=1010 frame=101000110010110101110000011010010011 -> Sin errores. Trama OK.
+msg=0111 frame=011101001100011001100111101000101110 -> Sin errores. Trama OK.
+msg=0001 frame=000110100101000001011101111100011011 -> Sin errores. Trama OK.
+
+=== CRC-32 – 1 error ===
+err_frame=101010110010110101110000011010010011 -> Error detectado. Se descarta.
+CRC recv: 10110010110101110000011010010011 | CRC calc: 00110010110101110000011010010011
+err_frame=011101001100011001110111101000101110 -> Error detectado. Se descarta.
+CRC recv: 01001100011001110111101000101110 | CRC calc: 01001100011001100111101000101110
+err_frame=001110100101000001011101111100011011 -> Error detectado. Se descarta.
+CRC recv: 10100101000001011101111100011011 | CRC calc: 01001011000010111011111000110111
+
+=== CRC-32 – 2+ errores ===
+err_frame=001000110110110101110000011010010011 -> Error detectado. Se descarta.
+CRC recv: 00110110110101110000011010010011 | CRC calc: 00111100000011001000111010100001
+err_frame=001101001100011001100111101000100110 -> Error detectado. Se descarta.
+CRC recv: 01001100011001100111101000100110 | CRC calc: 01001011000010111011111000110111
+err_frame=000010100101000001011101011100011011 -> Error detectado. Se descarta.
+CRC recv: 10100101000001011101011100011011 | CRC calc: 11010010000000101110111110001101
