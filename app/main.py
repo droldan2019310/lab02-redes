@@ -1,86 +1,132 @@
-import sys
+#!/usr/bin/env python3
 import os
+import sys
 import subprocess
 import random
 
-# Permitir importar transmission
-sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-
+# Para poder importar transmission/ desde el padre
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 from transmission.client import send_message
 from transmission.server import start_server
 
-# =========================
-# Capa de Ruido
-# =========================
-def apply_noise(bits: str, error_prob: float) -> str:
-    noisy_bits = []
-    for bit in bits:
-        if random.random() < error_prob:
-            noisy_bits.append('1' if bit == '0' else '0')
-        else:
-            noisy_bits.append(bit)
-    return ''.join(noisy_bits)
+def pres_encode(text: str) -> str:
+    bits = ''.join(f"{ord(c):08b}" for c in text)
+    print(f">> [PRESENTACIÓN] Bits ASCII:\n{bits}\n")
+    return bits
 
-# =========================
-# Algoritmos CRC32
-# =========================
-def run_crc32_sender(msg):
-    result = subprocess.run([sys.executable, "crc32/sender.py"], input=msg.encode(), capture_output=True)
-    return result.stdout.decode().strip()
+def pres_decode(bits: str) -> str:
+    text = ''.join(chr(int(bits[i:i+8], 2)) for i in range(0, len(bits), 8))
+    print(f">> [PRESENTACIÓN] Texto: {text}\n")
+    return text
 
-def run_crc32_receiver(trama):
-    if not os.path.exists("crc32/receiver"):
-        subprocess.run(["g++", "crc32/receiver.cpp", "-o", "crc32/receiver"])
-    result = subprocess.run(["./crc32/receiver"], input=trama.encode(), capture_output=True)
-    return result.stdout.decode().strip()
+def enlace_hamming_encode(bits: str) -> str:
+    code = subprocess.check_output(
+        ["../hamming74/sender"],
+        input=bits.encode()
+    ).decode().strip()
+    print(f">> [ENLACE] Hamming (7,4) code:\n{code}\n")
+    return code
 
-# =========================
-# Algoritmos Hamming74
-# =========================
-def run_hamming_sender(msg):
-    if not os.path.exists("hamming74/sender"):
-        subprocess.run(["g++", "hamming74/sender.cpp", "-o", "hamming74/sender"])
-    result = subprocess.run(["./hamming74/sender"], input=msg.encode(), capture_output=True)
-    return result.stdout.decode().strip()
+def enlace_hamming_decode(frame: str) -> (str, bool):
+    out = subprocess.check_output(
+        ["python3", "../hamming74/receiver.py"],
+        input=frame.encode()
+    ).decode().strip()
+    print(f">> [ENLACE] {out}\n")
+    if "Datos:" in out:
+        data_bits = out.split("Datos:")[1].strip()
+        return data_bits, True
+    return "", False
 
-def run_hamming_receiver(trama):
-    result = subprocess.run([sys.executable, "hamming74/receiver.py"], input=trama.encode(), capture_output=True)
-    return result.stdout.decode().strip()
+def enlace_crc_encode(bits: str) -> str:
+    frame = subprocess.check_output(
+        ["python3", "../crc32/sender.py"],
+        input=bits.encode()
+    ).decode().strip()
+    print(f">> [ENLACE] Frame + CRC32:\n{frame}\n")
+    return frame
 
-# =========================
-# Main principal
-# =========================
+def enlace_crc_decode(frame: str) -> (str, bool):
+    # Lanza el receptor de CRC y captura stdout completo
+    proc = subprocess.run(
+        ["../crc32/receiver"],
+        input=frame.encode(),
+        capture_output=True,
+        check=True
+    )
+    out = proc.stdout.decode()
+    print(f">> [ENLACE] {out}")
+
+    # Si la comprobación pasó, buscamos la línea con los bits
+    if "Sin errores" in out:
+        for line in out.splitlines():
+            # Aquí capturamos justo la línea que empieza con "Mensaje decodificado:"
+            if line.lower().startswith("mensaje decodificado"):
+                data_bits = line.split(":", 1)[1].strip()
+                # DEBUG opcional:
+                print(f"DEBUG datos extraídos: {data_bits}")
+                return data_bits, True
+
+        # Fallback: si no encontramos esa línea, recortamos el CRC
+        print("DEBUG: no hallé 'Mensaje decodificado', recorto CRC manualmente")
+        return frame[:-32], True
+
+    # Si falla la comprobación de CRC
+    print(">> [ENLACE] ERROR: CRC inválido, trama descartada")
+    return "", False
+
+
+def ruido_layer(frame: str, p: float) -> str:
+    flips = []
+    lst = list(frame)
+    for i, b in enumerate(lst):
+        if random.random() < p:
+            lst[i] = '1' if b == '0' else '0'
+            flips.append(i)
+    noisy = ''.join(lst)
+    print(f">> [RUIDO] Bits volteados en posiciones: {flips}")
+    print(f">> [RUIDO] Trama ruidosa:\n{noisy}\n")
+    return noisy
+
 def main():
-    mode = input("Selecciona modo (emisor/receptor): ").strip().lower()
-    algorithm = input("Selecciona algoritmo (crc/hamming): ").strip().lower()
+    mode = input("Modo (emisor/receptor): ").strip().lower()
+    alg  = input("Algoritmo (hamming/crc): ").strip().lower()
 
     if mode == "emisor":
-        msg = input("Mensaje a enviar: ").strip()
-        error_prob = float(input("Probabilidad de error (ej. 0.01 para 1%): ").strip())
-
-        # 1) Codificar
-        if algorithm == "crc":
-            trama = run_crc32_sender(msg)
+        # Aplicación
+        text = input(">> [APLICACIÓN] Mensaje a enviar: ")
+        # Presentación
+        bits = pres_encode(text)
+        # Enlace (encode)
+        if alg == "hamming":
+            frame = enlace_hamming_encode(bits)
         else:
-            trama = run_hamming_sender(msg)
-
-        # 2) Aplicar ruido
-        print(f"[INFO] Aplicando ruido con probabilidad {error_prob*100:.2f}%...")
-        noisy_trama = apply_noise(trama, error_prob)
-        print(f"[INFO] Trama original: {trama[:64]}... (longitud {len(trama)})")
-        print(f"[INFO] Trama con ruido: {noisy_trama[:64]}... (longitud {len(noisy_trama)})")
-
-        # 3) Enviar al receptor
-        send_message(noisy_trama)
+            frame = enlace_crc_encode(bits)
+        # Ruido
+        p = float(input(">> [RUIDO] Tasa de error [0–1]: "))
+        noisy = ruido_layer(frame, p)
+        # Transmisión
+        send_message(noisy)
+        print(">> [TRANSMISIÓN] Trama enviada.\n")
 
     elif mode == "receptor":
-        trama = start_server(port=5050)  # <-- puerto fijo 5050
-        if algorithm == "crc":
-            print(run_crc32_receiver(trama))
+        # Transmisión (recv)
+        frame = start_server()
+        # Enlace (decode)
+        if alg == "hamming":
+            data_bits, ok = enlace_hamming_decode(frame)
         else:
-            print(run_hamming_receiver(trama))
+            data_bits, ok = enlace_crc_decode(frame)
+        if not ok:
+            print(">> [APLICACIÓN] ERROR: trama irrecuperable. Mensaje descartado.\n")
+            return
+        # Presentación (decode)
+        pres_decode(data_bits)
+        # Aplicación
+        print(">> [APLICACIÓN] Mensaje recibido correctamente.\n")
+
     else:
-        print("Modo inválido.")
+        print("Modo inválido. Usa 'emisor' o 'receptor'.")
 
 if __name__ == "__main__":
     main()
