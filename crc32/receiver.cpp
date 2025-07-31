@@ -22,9 +22,22 @@ uint32_t crc32(const std::vector<uint8_t>& data) {
     return crc ^ 0xFFFFFFFFu;
 }
 
+std::string bits_to_text(const std::string& bits) {
+    std::string text;
+    for (size_t i = 0; i + 7 < bits.size(); i += 8) {
+        std::string byte = bits.substr(i, 8);
+        char c = static_cast<char>(std::stoi(byte, nullptr, 2));
+        text.push_back(c);
+    }
+    return text;
+}
+
 int main() {
     std::string in;
     if (!(std::cin >> in)) return 0;
+
+    std::cout << "[DEBUG] Longitud trama recibida: " << in.size() << " bits\n";
+
     if (in.size() < 32) {
         std::cerr << "Trama muy corta\n";
         return 1;
@@ -45,6 +58,7 @@ int main() {
 
     if (calc_bits == recv_crc_bits) {
         std::cout << "Sin errores. Trama OK.\n";
+        std::cout << "Mensaje decodificado: " << bits_to_text(msg_bits) << "\n";
     } else {
         std::cout << "Error detectado. Se descarta.\n";
         std::cout << "CRC recv: " << recv_crc_bits << " | CRC calc: " << calc_bits << "\n";
